@@ -1,31 +1,86 @@
-import { io, Socket } from 'socket.io-client'
+import { Server as NetServer } from 'http'
+import { Server as ServerIO } from 'socket.io'
+import { NextApiResponse } from 'next'
 
-let socket: Socket | null = null
+export type NextApiResponseServerIO = NextApiResponse & {
+  socket: {
+    server: NetServer & {
+      io?: ServerIO
+    }
+  }
+}
 
-export const initializeSocket = (userId: string, guildId: string) => {
-  if (!socket) {
-    socket = io({
+const ROOM_ID = 'gorki-awards-2025'
+const participants = new Map()
+
+export const initSocket = (res: NextApiResponseServerIO) => {
+  if (!res.socket.server.io) {
+    console.log('Initialisation du serveur Socket.IO...')
+    const io = new ServerIO(res.socket.server, {
       path: '/api/socket/io',
       addTrailingSlash: false,
-      query: {
-        userId,
-        guildId
-      }
+      cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+      },
+      transports: ['websocket'],
+      pingTimeout: 60000,
+      pingInterval: 25000,
+      connectTimeout: 20000
     })
-  }
-  return socket
-}
 
-export const getSocket = () => {
-  if (!socket) {
-    throw new Error('Socket not initialized')
-  }
-  return socket
-}
+    io.on('connection', (socket) => {
+      console.log('Nouvelle connexion Socket.IO:', socket.id)
+      const { userId, guildId, name, image } = socket.handshake.query
 
-export const disconnectSocket = () => {
-  if (socket) {
-    socket.disconnect()
-    socket = null
+      console.log('Informations de connexion:', {
+        userId,
+        guildId,
+        name,
+        image
+      })
+
+      // Vérifier que l'utilisateur appartient au bon serveur Discord
+      if (guildId !== process.env.NEXT_PUBLIC_DISCORD_GUILD_ID) {
+        console.log('Connexion refusée: mauvais serveur Discord')
+        socket.disconnect()
+        return
+      }
+
+      // Rejoindre la room globale
+      socket.join(ROOM_ID)
+      console.log(`Utilisateur ${userId} a rejoint la room ${ROOM_ID}`)
+
+      // Ajouter le participant à la liste
+      participants.set(socket.id, {
+        id: userId,
+        socketId: socket.id,
+        name,
+        image
+      })
+
+      console.log('Participant ajouté:', userId)
+      console.log('Nombre total de participants:', participants.size)
+
+      // Envoyer la liste mise à jour à tous les clients de la room
+      io.to(ROOM_ID).emit('participants:update', Array.from(participants.values()))
+
+      // Gérer la déconnexion
+      socket.on('disconnect', () => {
+        console.log('Déconnexion:', socket.id)
+        participants.delete(socket.id)
+        console.log('Nombre total de participants après déconnexion:', participants.size)
+        io.to(ROOM_ID).emit('participants:update', Array.from(participants.values()))
+      })
+
+      // Gérer les erreurs
+      socket.on('error', (error) => {
+        console.error('Erreur Socket.IO:', error)
+      })
+    })
+
+    res.socket.server.io = io
   }
+
+  return res.socket.server.io
 } 

@@ -10,15 +10,27 @@ const nextConfig = {
       },
     ],
   },
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     config.externals.push({
       'utf-8-validate': 'commonjs utf-8-validate',
       'bufferutil': 'commonjs bufferutil',
     })
+    if (isServer) {
+      const { initServer } = require('./lib/server.js');
+      initServer();
+    }
     return config
   },
   experimental: {
     serverComponentsExternalPackages: ['socket.io'],
+  },
+  async rewrites() {
+    return [
+      {
+        source: '/api/socket/io',
+        destination: 'http://localhost:3001/api/socket/io',
+      },
+    ]
   },
 }
 

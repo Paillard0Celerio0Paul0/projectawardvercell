@@ -10,7 +10,6 @@ import { io } from 'socket.io-client'
 export default function RoomPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [socket, setSocket] = useState<any>(null)
   const [participants, setParticipants] = useState<any[]>([])
 
   useEffect(() => {
@@ -22,27 +21,47 @@ export default function RoomPage() {
   useEffect(() => {
     if (!session?.user?.id) return
 
-    const newSocket = io({
+    console.log('Tentative de connexion Socket.IO...')
+    const socket = io('http://localhost:3001', {
       path: '/api/socket/io',
       addTrailingSlash: false,
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 20000,
       query: {
         userId: session.user.id,
-        guildId: process.env.NEXT_PUBLIC_DISCORD_GUILD_ID
+        guildId: process.env.NEXT_PUBLIC_DISCORD_GUILD_ID,
+        name: session.user.name,
+        image: session.user.image
       }
     })
 
-    newSocket.on('connect', () => {
+    socket.on('connect', () => {
       console.log('Connected to socket server')
     })
 
-    newSocket.on('participants:update', (updatedParticipants) => {
-      setParticipants(updatedParticipants)
+    socket.on('connect_error', (error) => {
+      console.error('Connection error:', error)
     })
 
-    setSocket(newSocket)
+    socket.on('error', (error) => {
+      console.error('Socket error:', error)
+    })
+
+    socket.on('participants:update', (updatedParticipants) => {
+      console.log('Participants updated:', updatedParticipants)
+      const participantsWithCurrentUser = updatedParticipants.map(participant => ({
+        ...participant,
+        isCurrentUser: participant.id === session.user.id
+      }))
+      setParticipants(participantsWithCurrentUser)
+    })
 
     return () => {
-      newSocket.close()
+      console.log('Déconnexion du socket...')
+      socket.disconnect()
     }
   }, [session])
 
@@ -56,15 +75,7 @@ export default function RoomPage() {
       
       <div className="absolute top-0 left-0 w-[15vw] min-w-[200px] h-full p-4">
         <ParticipantsList 
-          participants={[
-            {
-              id: session?.user?.id || '',
-              name: session?.user?.name || '',
-              image: session?.user?.image || '',
-              isCurrentUser: true
-            },
-            ...participants
-          ]} 
+          participants={participants}
         />
       </div>
 
