@@ -9,11 +9,8 @@ declare module 'http' {
   }
 }
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-}
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 let io: ServerIO | null = null
 
