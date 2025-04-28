@@ -24,14 +24,14 @@ const handler = NextAuth({
     async jwt({ token, account, profile }) {
       if (account) {
         token.accessToken = account.access_token
-        token.id = profile?.id
+        token.id = (profile as DiscordProfile).id
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
-        session.accessToken = token.accessToken as string
+        session.user.accessToken = token.accessToken as string
       }
       return session
     },
