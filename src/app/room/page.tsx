@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import UserProfile from '@/components/UserProfile'
 import ParticipantsList from '@/components/ParticipantsList'
-import { io } from 'socket.io-client'
+import { pusherClient } from '@/lib/pusher'
 
 interface Participant {
   id: string
@@ -18,6 +18,7 @@ export default function RoomPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [connectionStatus, setConnectionStatus] = useState<string>('connecting')
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -26,39 +27,35 @@ export default function RoomPage() {
   }, [status, router])
 
   useEffect(() => {
-    if (!session?.user?.id) return
+    if (!session?.user?.id || !pusherClient) return
 
-    console.log('Tentative de connexion Socket.IO...')
-    const socket = io('http://localhost:3001', {
-      path: '/api/socket/io',
-      addTrailingSlash: false,
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 20000,
-      query: {
-        userId: session.user.id,
-        guildId: process.env.NEXT_PUBLIC_DISCORD_GUILD_ID,
-        name: session.user.name,
-        image: session.user.image
-      }
+    // Vérification des variables d'environnement
+    console.log('Vérification des variables d\'environnement:')
+    console.log('NEXT_PUBLIC_PUSHER_KEY:', process.env.NEXT_PUBLIC_PUSHER_KEY)
+    console.log('NEXT_PUBLIC_PUSHER_CLUSTER:', process.env.NEXT_PUBLIC_PUSHER_CLUSTER)
+    console.log('NEXT_PUBLIC_DISCORD_GUILD_ID:', process.env.NEXT_PUBLIC_DISCORD_GUILD_ID)
+
+    if (!process.env.NEXT_PUBLIC_PUSHER_KEY || !process.env.NEXT_PUBLIC_PUSHER_CLUSTER) {
+      console.error('Variables d\'environnement Pusher manquantes')
+      setConnectionStatus('error')
+      return
+    }
+
+    console.log('Initialisation de Pusher...')
+    const channel = pusherClient.subscribe('gorki-awards-2025')
+
+    channel.bind('pusher:subscription_succeeded', () => {
+      console.log('Abonnement Pusher réussi')
+      setConnectionStatus('connected')
     })
 
-    socket.on('connect', () => {
-      console.log('Connected to socket server')
+    channel.bind('pusher:subscription_error', (error: any) => {
+      console.error('Erreur d\'abonnement Pusher:', error)
+      setConnectionStatus('error')
     })
 
-    socket.on('connect_error', (error) => {
-      console.error('Connection error:', error)
-    })
-
-    socket.on('error', (error) => {
-      console.error('Socket error:', error)
-    })
-
-    socket.on('participants:update', (updatedParticipants: Participant[]) => {
-      console.log('Participants updated:', updatedParticipants)
+    channel.bind('participants:update', (updatedParticipants: Participant[]) => {
+      console.log('Participants mis à jour:', updatedParticipants)
       const participantsWithCurrentUser = updatedParticipants.map((participant: Participant) => ({
         ...participant,
         isCurrentUser: participant.id === session.user.id
@@ -66,9 +63,42 @@ export default function RoomPage() {
       setParticipants(participantsWithCurrentUser)
     })
 
+    // Envoyer les informations de l'utilisateur au serveur
+    console.log('Envoi des informations utilisateur...')
+    fetch('/api/socket/io', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId: session.user.id,
+        guildId: process.env.NEXT_PUBLIC_DISCORD_GUILD_ID,
+        name: session.user.name,
+        image: session.user.image,
+        socketId: channel.name
+      }),
+    }).then(response => {
+      console.log('Réponse du serveur:', response.status)
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'envoi des informations')
+      }
+    }).catch(error => {
+      console.error('Erreur:', error)
+    })
+
     return () => {
-      console.log('Déconnexion du socket...')
-      socket.disconnect()
+      console.log('Nettoyage de la connexion Pusher...')
+      // Supprimer l'utilisateur de la liste des participants
+      fetch('/api/socket/io', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          socketId: channel.name
+        }),
+      })
+      pusherClient.unsubscribe('gorki-awards-2025')
     }
   }, [session])
 
@@ -89,6 +119,7 @@ export default function RoomPage() {
       <div className="ml-[15vw] min-h-screen flex flex-col">
         <div className="absolute top-8 left-1/2 -translate-x-1/2">
           <h1 className="text-2xl">ROOM GORKI AWARDS 2025</h1>
+          <p className="text-sm text-gray-500">Statut de connexion: {connectionStatus}</p>
         </div>
         <div className="flex-1 p-8 mt-20">
           {/* Contenu principal de la room */}
