@@ -7,10 +7,17 @@ import UserProfile from '@/components/UserProfile'
 import ParticipantsList from '@/components/ParticipantsList'
 import { io } from 'socket.io-client'
 
+interface Participant {
+  id: string
+  name: string
+  image: string
+  isCurrentUser?: boolean
+}
+
 export default function RoomPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [participants, setParticipants] = useState<any[]>([])
+  const [participants, setParticipants] = useState<Participant[]>([])
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -50,9 +57,9 @@ export default function RoomPage() {
       console.error('Socket error:', error)
     })
 
-    socket.on('participants:update', (updatedParticipants) => {
+    socket.on('participants:update', (updatedParticipants: Participant[]) => {
       console.log('Participants updated:', updatedParticipants)
-      const participantsWithCurrentUser = updatedParticipants.map(participant => ({
+      const participantsWithCurrentUser = updatedParticipants.map((participant: Participant) => ({
         ...participant,
         isCurrentUser: participant.id === session.user.id
       }))
