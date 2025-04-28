@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { initializeSocket, getSocket } from '@/lib/socket'
 import { useSession } from 'next-auth/react'
+import { io } from 'socket.io-client'
 
 export default function SocketTest() {
   const { data: session, status } = useSession()
@@ -10,10 +10,16 @@ export default function SocketTest() {
   const [participants, setParticipants] = useState<any[]>([])
 
   useEffect(() => {
-    if (status !== 'authenticated' || !session?.user?.email) return
+    if (status !== 'authenticated' || !session?.user?.id) return
 
-    // Initialiser la connexion Socket.IO
-    const socket = initializeSocket(session.user.email, process.env.NEXT_PUBLIC_DISCORD_GUILD_ID || '')
+    const socket = io({
+      path: '/api/socket/io',
+      addTrailingSlash: false,
+      query: {
+        userId: session.user.id,
+        guildId: process.env.NEXT_PUBLIC_DISCORD_GUILD_ID
+      }
+    })
 
     socket.on('connect', () => {
       console.log('Connecté au serveur Socket.IO')
