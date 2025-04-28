@@ -74,8 +74,7 @@ export default function RoomPage() {
         userId: session.user.id,
         guildId: process.env.NEXT_PUBLIC_DISCORD_GUILD_ID,
         name: session.user.name,
-        image: session.user.image,
-        socketId: channel.name
+        image: session.user.image
       }),
     }).then(response => {
       console.log('Réponse du serveur:', response.status)
@@ -95,10 +94,12 @@ export default function RoomPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          socketId: channel.name
+          userId: session.user.id
         }),
       })
-      pusherClient.unsubscribe('gorki-awards-2025')
+      if (pusherClient) {
+        pusherClient.unsubscribe('gorki-awards-2025')
+      }
     }
   }, [session])
 
