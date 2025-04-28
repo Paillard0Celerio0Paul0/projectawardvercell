@@ -11,8 +11,8 @@ interface DiscordProfile {
 const handler = NextAuth({
   providers: [
     DiscordProvider({
-      clientId: process.env.DISCORD_CLIENT_ID || '',
-      clientSecret: process.env.DISCORD_CLIENT_SECRET || '',
+      clientId: process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID!,
+      clientSecret: process.env.NEXT_PUBLIC_DISCORD_CLIENT_SECRET!,
       authorization: {
         params: {
           scope: 'identify email guilds',
@@ -22,22 +22,44 @@ const handler = NextAuth({
   ],
   callbacks: {
     async jwt({ token, account, profile }) {
-      if (account && profile) {
+      if (account) {
         token.accessToken = account.access_token
-        token.id = (profile as DiscordProfile).id
+        token.id = profile?.id
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
-        session.user.accessToken = token.accessToken as string
+        session.accessToken = token.accessToken as string
       }
       return session
+    },
+    async signIn({ account, profile }) {
+      if (account?.provider === 'discord') {
+        // Vérifier que l'utilisateur appartient au bon serveur Discord
+        const guildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID
+        if (!guildId) return false
+
+        try {
+          const response = await fetch(`https://discord.com/api/users/@me/guilds`, {
+            headers: {
+              Authorization: `Bearer ${account.access_token}`,
+            },
+          })
+          const guilds = await response.json()
+          return guilds.some((guild: any) => guild.id === guildId)
+        } catch (error) {
+          console.error('Erreur lors de la vérification du serveur Discord:', error)
+          return false
+        }
+      }
+      return true
     },
   },
   pages: {
     signIn: '/',
+    error: '/',
   },
   debug: process.env.NODE_ENV === 'development',
 })
